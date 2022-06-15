@@ -1,0 +1,588 @@
+---
+title: "quantitative final"
+author: "Biao Yun"
+date: "5/9/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+library(tm)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(tokenizers)
+library(tidyverse)
+library(caret)
+library(proxy)
+library(qdapRegex)
+library(tidytext)
+library(e1071)
+library(caTools)
+library(randomForest)
+library(glmnet)
+library(text2vec)
+library(rpart)
+library(rpart.plot)
+library(ggplot2)
+library(jiebaR)
+library(DescTools)
+library(utf8)
+library(ggraph)
+library(igraph)
+```
+
+```{r}
+real_raw  = read.csv(file = "/Users/biaoyun/Documents/110 Spring Semester Graduated Institute/Quantitive Linguistics/Final code/real_news.csv", sep = ",", encoding="UTF-8")
+
+fake_raw  = read.csv(file = "/Users/biaoyun/Documents/110 Spring Semester Graduated Institute/Quantitive Linguistics/Final code/fake_news.csv", sep = ",", encoding = "UTF-8")
+
+real_anno = read.csv("/Users/biaoyun/Documents/110 Spring Semester Graduated Institute/Quantitive Linguistics/Final code/real_anno.csv", header = T, sep = ",")
+
+fake_anno = read.csv("/Users/biaoyun/Documents/110 Spring Semester Graduated Institute/Quantitive Linguistics/Final code/fake_anno.csv", header = T, sep = ",")
+
+```
+
+```{r}
+fake_len = length(fake_raw$text)
+real_len = length(real_raw$text)
+
+rid_at = function(text){
+  gsub("@\\S*\\s","", text, perl = T)
+  gsub("@\\S*", "", text, perl = T)
+}
+
+rid_link = function(text){
+  gsub("O网页链接","", text, perl = T)
+}
+rid_sharp = function(text){
+  gsub("#", "", text, perl = T)
+}
+
+rid_id = function(text){
+  gsub("L\\S*", "", text, perl = T)
+}
+
+rid_emo = function(text){
+  gsub("\\[\\S*\\]", "", text, perl = T)
+}
+
+rid_reporter = function(text){
+  gsub("\uff08\\p{Han}+\uff09$", "", text, perl = T)
+  gsub("\\(\\p{Han}+\\)$", "", text, perl = T)
+}
+
+real_clean = real_raw
+for (i in 1:real_len){
+  real_clean$text[i] = rid_at(real_clean$text[i])
+  real_clean$text[i] = rid_link(real_clean$text[i])
+  real_clean$text[i] = rid_sharp(real_clean$text[i])
+  real_clean$text[i] = rid_id(real_clean$text[i])
+  real_clean$text[i] = rid_emo(real_clean$text[i])
+  real_clean$text[i] = rid_reporter(real_clean$text[i])
+}
+
+
+fake_clean = fake_raw
+for (i in 1:fake_len){
+  fake_clean$text[i] = rid_at(fake_clean$text[i])
+  fake_clean$text[i] = rid_link(fake_clean$text[i])
+  fake_clean$text[i] = rid_sharp(fake_clean$text[i])
+  fake_clean$text[i] = rid_id(fake_clean$text[i])
+  fake_clean$text[i] = rid_emo(fake_clean$text[i])
+  fake_clean$text[i] = rid_reporter(fake_clean$text[i])
+}
+```
+
+
+```{r}
+fake = subset(fake_clean, select = -c(id, date, user_id, pic_url, video_url, analysis))
+fake = cbind(fake, fake_anno)
+real = subset(real_clean, select = -c(id, date, user_id, pic_url, video_url))
+real = cbind(real, real_anno)
+```
+
+###驚嘆號
+```{r}
+cutter = worker
+
+jie = worker()
+jie$symbol = TRUE
+
+
+excm = c("!", "！")
+
+realLen = 1760
+fakeLen = 344
+
+text_length = function(text){
+  textLength = str_count(text, '\\w+')
+  return(textLength)
+}
+
+search_excm = function(text){
+  token = jie[text]
+  search = token %in% excm
+  return(length(which(search == "TRUE")))
+}
+
+#real news
+
+for(i in 1:realLen){
+real$exclamation_marks[i] = search_excm(real$text[i])
+}
+
+#fake news
+
+
+for(i in 1:fakeLen){
+fake$exclamation_marks[i] = search_excm(fake$text[i])
+}
+```
+
+###問號
+```{r}
+
+question = c("?", "？")
+
+
+search_que = function(text){
+  token = jie[text]
+  search = token %in% question
+  return(length(which(search == "TRUE")))
+}
+
+#real news
+
+for(i in 1:realLen){
+real$question_marks[i] = search_que(real$text[i])
+}
+
+#fake news
+
+
+for(i in 1:fakeLen){
+fake$question_marks[i] = search_que(fake$text[i])
+}
+```
+
+
+###平均字數
+```{r}
+
+punct = c("！", "，", "。", "：", "】", "”", "、")
+realLen = 1760
+fakeLen = 344
+
+text_length = function(text){
+  textLength = str_count(text, '\\w+')
+  return(textLength)
+}
+
+
+search_punct = function(text){
+  token = jie[text]
+  search = token %in% punct
+  return(length(which(search == "TRUE")))
+}
+
+#real news
+
+
+for (i in 1:realLen) {
+  real$average_length[i] =round(str_count(real$text[i], '[\u4E00-\u9FFF]')/search_punct(real$text[i]), 2)
+}
+
+
+for (i in 1:realLen) {
+ if (real$average_length[i]== "Inf"){
+  real$average_length[i]= str_count(real$text[i], '[\u4E00-\u9FFF]')}
+  }
+
+#fake news
+
+
+for (i in 1:fakeLen) {
+  fake$average_length[i] =round(str_count(fake$text[i], '[\u4E00-\u9FFF]')/search_punct(fake$text[i]), 2)
+}
+
+for (i in 1:fakeLen) {
+ if (fake$average_length[i]== "Inf"){
+  fake$average_length[i]= str_count(fake$text[i], '[\u4E00-\u9FFF]')}
+  }
+```
+
+# cohesion
+```{r}
+conjunction = c("可是", "还是", "因为", "和", "所以", "跟", "不但", "不管", "或", "而且", "结果", "只要", "连", "或者", "且", "另外", "不论", "不如", "不用说", "到", "而", "反而", "否则", "及", "假如", "尽管", "就是", "就算", "况且", "那", "那么", "其次", "如", "无论如何", "要不然", "要不是", "一方面", "以及", "以免", "因此", "由于", "于是", "与", "只是", "只有", "总而言之", "总之", "并", "并且", "不仅",  "不然", "除非", "此外", "还不如", "还有", "何况", "加上", "既然", "即使", "就是说", 
+"据说", "哪怕", "然而", "如果说", "无论", "要不", "以", 
+"一般而言", "以便", "一旦", "因而", "与其", "再说")
+
+search_conjunction = function(text){
+  token = jie[text]
+  search = token %in% conjunction
+  return(length(which(search == "TRUE")))
+}
+
+#real news
+
+for (i in 1:realLen) {
+  real$cohesion[i] =round(search_punct(real$text[i])/search_conjunction(real$text[i]), 2)
+}
+
+for (i in 1:realLen) {
+ if (real$cohesion[i]== "Inf"){
+  real$cohesion[i]= 0}
+}
+
+#fake news
+
+
+for (i in 1:fakeLen) {
+  fake$cohesion[i] =round(search_punct(real$text[i])/search_conjunction(fake$text[i]), 2)
+}
+
+for (i in 1:fakeLen) {
+ if (fake$cohesion[i]== "Inf"){
+  fake$cohesion[i]= 0}
+  }
+
+```
+
+# Entropy
+```{r}
+cutter = worker()
+
+calculate_entropy = function(text){
+  raw = c(text)
+  text_cut = segment(raw, cutter)
+  return(Entropy(table(text_cut), base = 2))
+}
+
+for (i in 1:realLen) {
+  real$entropy[i] = calculate_entropy(real$text[i])
+}
+
+for (i in 1:fakeLen) {
+  fake$entropy[i] = calculate_entropy(fake$text[i])
+}
+```
+
+#整合Dependency Distance結果
+```{r}
+real_ED = read.csv("/Users/biaoyun/Documents/110 Spring Semester Graduated Institute/Quantitive Linguistics/Final code/REAL.csv", header = T, sep = ",")
+
+fake_ED = read.csv("/Users/biaoyun/Documents/110 Spring Semester Graduated Institute/Quantitive Linguistics/Final code/FAKE.csv", header = T, sep = ",")
+
+
+real = cbind(real, dependency_distance = real_ED$dependency_distance)
+fake = cbind(fake, dependency_distance = fake_ED$dependency_distance)
+
+
+colnames(real)[which(names(real) == "Imperative")] <- "imperative"
+colnames(real)[which(names(real) == "Interogative")] <- "interrogative"
+
+colnames(fake)[which(names(fake) == "Imperative")] <- "imperative"
+colnames(fake)[which(names(fake) == "Interogative")] <- "interrogative"
+
+
+head(real)
+head(fake)
+
+```
+
+# Final Files
+```{r}
+write.csv(file = "Real_final.csv", real)
+write.csv(file = "Fake_final.csv", fake)
+
+```
+
+# Shuffle Data
+```{r}
+real_fake_data = rbind(real, fake)
+
+set.seed(521)
+shuffle_index <- sample(1:nrow(real_fake_data))
+head(shuffle_index)
+
+real_fake_data <- real_fake_data[shuffle_index, ]
+head(real_fake_data)
+
+real_fake_data <- subset(real_fake_data, select = -c(text, comment_num, repost_num, like_num))
+head(real_fake_data)
+
+real_fake_data$label = as.factor(real_fake_data$label)
+real_fake_data$imperative = as.factor(real_fake_data$imperative)
+real_fake_data$interrogative = as.factor(real_fake_data$interrogative)
+head(real_fake_data)
+
+
+```
+# Sampling
+```{r}
+
+undersampling <- function(df){
+  real_news = df[which(df$label == "real"), ]
+  fake_news = df[which(df$label == "fake"), ]
+  real_sample = real_news[sample(1:nrow(real_news), 344),]
+  df = rbind(real_sample, fake_news)
+  return(df)
+}
+
+```
+
+
+# Decision Tree
+```{r}
+
+set.seed(304)
+
+sampled_data = undersampling(real_fake_data)
+trainIndex = createDataPartition(sampled_data$label, p=0.8, list=FALSE)
+train_set = sampled_data[trainIndex, ]
+test_set = sampled_data[-trainIndex, ]
+
+
+prop.table(table(train_set$label))
+prop.table(table(test_set$label))
+
+```
+
+```{r}
+
+train_control<- trainControl(method="cv", number=10, savePredictions = TRUE)
+DT_trained_model <- train(label~.,
+                          data = train_set, 
+                          trControl = train_control, method="rpart")
+
+DT_pred <- predict(DT_trained_model, test_set)
+DT_result <- confusionMatrix(DT_pred, test_set$label, mode='prec_recall')
+DT_Im = varImp(DT_trained_model)
+
+
+
+```
+# Random Forest
+```{r}
+
+train_control<- trainControl(method="cv", number=10, savePredictions = TRUE)
+RF_trained_model<- train(label~., 
+                         data = train_set,
+                         trControl = train_control, 
+                         method = "rf")
+
+RF_pred = predict(RF_trained_model, test_set)
+RF_result = confusionMatrix(RF_pred, test_set$label, mode='prec_recall')
+RF_Im = varImp(RF_trained_model)
+
+```
+
+# SVM
+```{r}
+
+
+SVM_trained_model<- train(label~., 
+                          data = train_set, 
+                          trControl = train_control, 
+                          method = "svmLinearWeights2")
+
+SVM_pred = predict(SVM_trained_model, test_set)
+SVM_result = confusionMatrix(SVM_pred, test_set$label, mode = 'prec_recall')
+SVM_Im = varImp(SVM_trained_model)
+
+
+```
+
+# Naive Bayes
+```{r}
+NB_trained_model<- train(label~., 
+                         data = train_set, 
+                         trControl = train_control, 
+                         method = "naive_bayes")
+
+NB_pred = predict(NB_trained_model, test_set)
+NB_result = confusionMatrix(NB_pred, test_set$label, mode = 'prec_recall')
+NB_Im = varImp(NB_trained_model)
+
+
+```
+# Result
+```{r}
+NB_result
+DT_result
+RF_result
+SVM_result
+
+```
+
+# VarIm
+```{r}
+NB_Im
+DT_Im
+RF_Im
+SVM_Im
+
+
+```
+
+```{r}
+quantile(sampled_data$exclamation_marks)
+quantile(sampled_data$dependency_distance)
+quantile(sampled_data$average_length)
+quantile(sampled_data$entropy)
+quantile(sampled_data$cohesion)
+quantile(sampled_data$question)
+
+```
+
+# chi-sq test
+
+```{r}
+for (i in 1:length(sampled_data$label)){
+  if (sampled_data$exclamation_marks[i] == 0){
+   sampled_data$exclamation_marks_g[i] = 1
+  }
+  else if (sampled_data$exclamation_marks[i] > 0 &sampled_data$exclamation_marks[i] < 3){
+    sampled_data$exclamation_marks_g[i] = 2
+  }else{
+    sampled_data$exclamation_marks_g[i] = 3
+  }
+  if (sampled_data$dependency_distance[i] <= 3.807916){
+    sampled_data$dependency_distance_g[i] = 1
+  }
+  else if (sampled_data$dependency_distance[i] > 3.807916 & sampled_data$dependency_distance[i] <= 4.760000){
+    sampled_data$dependency_distance_g[i] = 2
+  }else{
+    sampled_data$dependency_distance_g[i] = 3
+  }
+  if (sampled_data$average_length[i] <= 8.7675){
+    sampled_data$average_length_g[i] = 1
+  }else if (sampled_data$average_length[i] > 13.4700){
+    sampled_data$average_length_g[i] = 3
+  }else{
+    sampled_data$average_length_g[i] = 2
+  }
+  if (sampled_data$entropy[i] <= 4.834935){
+    sampled_data$entropy_g[i] = 1
+  }else if (sampled_data$entropy[i] > 5.877235){
+    sampled_data$entropy_g[i] = 3
+  }else{
+    sampled_data$entropy_g[i] = 2
+  }
+  if (sampled_data$cohesion[i] <= 4){
+    sampled_data$cohesion_g[i] = 1
+  }else if (sampled_data$cohesion[i] > 9.125){
+    sampled_data$cohesion_g[i] = 3
+  }else{
+    sampled_data$cohesion_g[i] = 2
+  }
+  if (sampled_data$question_marks[i] == 0){
+   sampled_data$question_marks_g[i] = 1
+  }
+  else if (sampled_data$question_marks[i] > 0 &sampled_data$question_marks[i] < 3){
+    sampled_data$question_marks_g[i] = 2
+  }else{
+    sampled_data$question_marks_g[i] = 3
+  }
+}
+
+sampled_data$exclamation_marks_g = as.factor(sampled_data$exclamation_marks_g)
+sampled_data$dependency_distance_g = as.factor(sampled_data$dependency_distance_g)
+sampled_data$average_length_g = as.factor(sampled_data$average_length_g)
+sampled_data$entropy_g = as.factor(sampled_data$entropy_g)
+sampled_data$cohesion_g = as.factor(sampled_data$cohesion_g)
+sampled_data$question_marks_g = as.factor(sampled_data$question_marks_g)
+```
+
+
+```{r}
+exclamation_marks_table = table(sampled_data$exclamation_marks_g, sampled_data$label)
+summary(exclamation_marks_table)
+
+dependency_table = table(sampled_data$dependency_distance_g, sampled_data$label)
+summary(dependency_table)
+
+average_table = table(sampled_data$average_length_g, sampled_data$label)
+summary(average_table)
+
+entropy_table = table(sampled_data$entropy_g, sampled_data$label)
+summary(entropy_table)
+
+cohesion_table = table(sampled_data$cohesion_g, sampled_data$label)
+summary(cohesion_table)
+
+imperative_table = table(sampled_data$imperative, sampled_data$label)
+summary(imperative_table)
+
+question_marks_table = table(sampled_data$question_marks_g, sampled_data$label)
+summary(question_marks_table)
+```
+
+# Plotting RF
+```{r}
+tree_func <- function(final_model, 
+                      tree_num) {
+  
+  # get tree by index
+  tree <- randomForest::getTree(final_model, 
+                                k = tree_num, 
+                                labelVar = TRUE) %>%
+    tibble::rownames_to_column() %>%
+    # make leaf split points to NA, so the 0s won't get plotted
+    mutate(`split point` = ifelse(is.na(prediction), `split point`, NA))
+  
+  # prepare data frame for graph
+  graph_frame <- data.frame(from = rep(tree$rowname, 2),
+                            to = c(tree$`left daughter`, tree$`right daughter`))
+  
+  # convert to graph and delete the last node that we don't want to plot
+  graph <- graph_from_data_frame(graph_frame) %>%
+    delete_vertices("0")
+  
+  # set node labels
+  V(graph)$node_label <- gsub("_", " ", as.character(tree$`split var`))
+  V(graph)$leaf_label <- as.character(tree$prediction)
+  V(graph)$split <- as.character(round(tree$`split point`, digits = 2))
+  
+  # plot
+  plot <- ggraph(graph, 'dendrogram') + 
+    theme_bw() +
+    geom_edge_link() +
+    geom_node_point() +
+    geom_node_text(aes(label = node_label), na.rm = TRUE, repel = TRUE) +
+    geom_node_label(aes(label = split), vjust = 2.5, na.rm = TRUE, fill = "white") +
+    geom_node_label(aes(label = leaf_label, fill = leaf_label), na.rm = TRUE, 
+					repel = TRUE, colour = "white", fontface = "bold", show.legend = FALSE) +
+    theme(panel.grid.minor = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.background = element_blank(),
+          plot.background = element_rect(fill = "white"),
+          panel.border = element_blank(),
+          axis.line = element_blank(),
+          axis.text.x = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks = element_blank(),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 18))
+  
+  print(plot)
+}
+```
+
+```{r}
+tree_num <- which(RF_trained_model$finalModel$forest$ndbigtree == min(RF_trained_model$finalModel$forest$ndbigtree))
+
+tree_func(final_model = RF_trained_model$finalModel, tree_num)
+
+```
